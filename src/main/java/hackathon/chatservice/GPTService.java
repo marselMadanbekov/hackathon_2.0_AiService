@@ -13,6 +13,10 @@ import org.springframework.web.client.RestTemplate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 @Service
 public class GPTService {
@@ -61,7 +65,7 @@ public class GPTService {
         }
     }
 
-    public Request whichCategories(CategoryRequest categoryRequest) throws JSONException, JsonProcessingException, JsonProcessingException {
+    public Request whichCategories(CategoryRequest categoryRequest) throws JSONException, JsonProcessingException {
         StringBuilder requestToGPT = new StringBuilder();
         requestToGPT.append("Oпредели к каким из нижеследующих категорий относится вопрос(можно выбрать несколько) если совпадения незначительные ничего не возвращай:\n" +
                 "Вопрос:" +
@@ -72,25 +76,36 @@ public class GPTService {
         }
         requestToGPT.append("Твой ответ должен начинаться с символа / дальше должен быть список id");
 
-        System.out.println("Запрос :" + requestToGPT.toString());
+        ExecutorService executorService = Executors.newFixedThreadPool(2);
+        List<Future<String>> futures = new ArrayList<>();
 
-        String response = sendOpenAIRequest(requestToGPT.toString());
+        futures.add(executorService.submit(() -> sendOpenAIRequest(requestToGPT.toString())));
+        futures.add(executorService.submit(() -> sendOpenAIRequest(categoryRequest.getQuestion())));
 
+        String response = null;
+        String answer = null;
 
-        System.out.println("Ответ : " + response);
+        try {
+            response = futures.get(0).get();
+            answer = futures.get(1).get();
+        } catch (InterruptedException | ExecutionException e) {
+            System.out.println(e.getMessage());
+        }
+
         List<Long> numbers = new ArrayList<>();
-
         String[] numberStrings;
         Request request = new Request();
         try {
-            String res = response.split("/")[1];
-            numberStrings = res.split(",");
-            for (String numberString : numberStrings) {
-                try {
-                    Long number = Long.parseLong(numberString.trim());
-                    numbers.add(number);
-                } catch (NumberFormatException e) {
-                    // Пропустить неправильные форматы чисел
+            if (response != null && response.contains("/")) {
+                String res = response.split("/")[1];
+                numberStrings = res.split(",");
+                for (String numberString : numberStrings) {
+                    try {
+                        Long number = Long.parseLong(numberString.trim());
+                        numbers.add(number);
+                    } catch (NumberFormatException e) {
+                        // Пропустить неправильные форматы чисел
+                    }
                 }
             }
             List<Category> resCat = new ArrayList<>();
@@ -105,8 +120,10 @@ public class GPTService {
             request.setInstructions(null);
         }
 
-        String answer = sendOpenAIRequest(categoryRequest.getQuestion());
         request.setAnswer(answer);
+
+        executorService.shutdown();
+
         return request;
     }
 
