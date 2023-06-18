@@ -34,10 +34,8 @@ public class ChatController {
     @PostMapping("/whichCategory")
     public ResponseEntity<Object> getWhichCategory(@RequestBody CategoryRequest request) {
         try {
-            System.out.println("bye" + request.getQuestion());
 
             Request resp = gptService.whichCategories(request);
-            System.out.println("hello");
             return new ResponseEntity<>(resp,HttpStatus.OK);
         }catch (Exception e){
             System.out.println(e.getMessage());
